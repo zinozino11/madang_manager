@@ -1,8 +1,13 @@
 import streamlit as st 
 import pandas as pd
 import time
-dbConn = pymysql.connect(user='root', passwd='1234', host='localhost', db='madang', charset='utf8')
-cursor = dbConn.cursor(pymysql.cursors.DictCursor)
+# 1. 연결: user, passwd, host 등은 다 지우고 DB 파일명만 씁니다.
+# read_only=False로 해야 insert/update가 가능합니다.
+dbConn = duckdb.connect(database='madang.db', read_only=False)
+
+# 2. 커서: DuckDB는 'DictCursor' 옵션이 따로 없습니다.
+# 대신 기본 cursor를 생성합니다.
+cursor = dbConn.cursor()
 
 def query(sql):
        cursor.execute(sql)
@@ -42,6 +47,7 @@ if len(name) > 0:
               if tab2.button('거래 입력'):
                      dbConn.commit()
                      tab2.write('거래가 입력되었습니다.')
+
 
 
 
