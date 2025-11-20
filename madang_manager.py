@@ -84,7 +84,7 @@ tab1, tab2 = st.tabs(["📚 고객 조회", "📝 거래 입력"])
 # --- [탭 1] 고객 조회 ---
 with tab1:
     st.subheader("고객 구매 이력 조회")
-    search_name = st.text_input("고객명 검색", placeholder="예: 최진호")
+    search_name = st.text_input("고객명 검색")
     
     if st.button("조회"):
         if search_name:
@@ -145,4 +145,5 @@ with tab2:
             
         else:
             st.error("책을 선택해주세요.")
+
 
