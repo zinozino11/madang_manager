@@ -9,8 +9,7 @@ def get_connection():
     # 1. DB 파일 연결
     conn = duckdb.connect(database='madang.db', read_only=False)
     
-    # 2. 테이블 초기화 (CSV 파일이 있을 경우)
-    # 문법 수정: 'CREATE TABLE OR REPLACE' (X) -> 'CREATE OR REPLACE TABLE' (O)
+    # 2. 테이블 초기화 (CSV 파일 기반)
     try:
         # Book 테이블 생성
         if os.path.exists('Book_madang.csv'):
@@ -19,6 +18,15 @@ def get_connection():
         # Customer 테이블 생성
         if os.path.exists('Customer_madang.csv'):
             conn.execute("CREATE OR REPLACE TABLE Customer AS SELECT * FROM 'Customer_madang.csv'")
+            
+            # [추가된 코드] 요청하신 '최진호' 고객 데이터 추가
+            # 테이블이 초기화될 때마다 이 데이터가 삽입됩니다.
+            # 혹시 CSV에 이미 6번이 있다면 중복될 수 있으니 체크 후 삽입 (안전장치)
+            conn.execute("""
+                INSERT INTO Customer (custid, name, address, phone)
+                SELECT 6, '최진호', '경기도', '010-7777-7777'
+                WHERE NOT EXISTS (SELECT 1 FROM Customer WHERE custid = 6)
+            """)
             
         # Orders 테이블 생성
         if os.path.exists('Orders_madang.csv'):
@@ -35,8 +43,6 @@ cursor = dbConn.cursor()
 
 # --- 쿼리 실행 함수 ---
 def query(sql, return_df=False):
-    # 커서가 닫혀있을 경우를 대비해 커서를 다시 가져오는 로직을 추가할 수도 있습니다.
-    # 여기서는 간단히 실행
     cursor.execute(sql)
     if return_df:
         return cursor.df()
@@ -47,14 +53,13 @@ def query(sql, return_df=False):
 
 books = []
 try:
-    # Book 테이블 확인
-    # 테이블이 제대로 생성되었는지 확인하는 쿼리
+    # 테이블 존재 여부 확인 (안전장치)
     cursor.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = 'Book'")
     if cursor.fetchall()[0][0] == 0:
-        st.error("데이터베이스에 Book 테이블이 없습니다. 'Book_madang.csv' 파일이 저장소에 있는지 확인해주세요.")
+        st.error("데이터베이스 테이블이 없습니다. CSV 파일(Book_madang.csv 등)을 확인해주세요.")
         st.stop()
 
-    # 책 목록 조회
+    # 책 목록 조회 (콤보박스용)
     book_result = query("select concat(bookid, ',', bookname) from Book")
     for res in book_result:
         books.append(res[0])
@@ -67,9 +72,10 @@ tab1, tab2 = st.tabs(["고객조회", "거래 입력"])
 
 # [탭 1] 고객 조회
 with tab1:
-    name_input = st.text_input("고객명 검색")
+    st.write("### 고객별 구매 내역 조회")
+    name_input = st.text_input("고객명 검색", placeholder="예: 최진호")
+    
     if name_input:
-        # f-string 사용 시 SQL 인젝션 주의가 필요하지만, 학습용이므로 간단히 처리
         sql = f"""
             SELECT c.custid, c.name, b.bookname, o.orderdate, o.saleprice 
             FROM Customer c, Book b, Orders o 
@@ -77,15 +83,26 @@ with tab1:
         """
         try:
             result_df = query(sql, return_df=True)
-            st.write(result_df)
+            
+            if not result_df.empty:
+                st.dataframe(result_df)
+            else:
+                st.warning(f"'{name_input}' 고객의 구매 내역이 없습니다.")
+                # 고객 정보만이라도 있는지 확인해서 보여주면 더 친절함
+                check_cust = query(f"SELECT * FROM Customer WHERE name = '{name_input}'", return_df=True)
+                if not check_cust.empty:
+                    st.info("고객 정보는 존재합니다:")
+                    st.dataframe(check_cust)
+
         except Exception as e:
             st.error(f"조회 중 오류가 발생했습니다: {e}")
 
 # [탭 2] 거래 입력
 with tab2:
-    st.write("### 거래 입력")
+    st.write("### 신규 거래 입력")
     
-    input_custid = st.number_input("고객번호(custid)", value=1, step=1)
+    # 최진호(6번)을 기본값으로 설정하기 위해 value=6으로 변경
+    input_custid = st.number_input("고객번호(custid)", value=6, step=1)
     select_book = st.selectbox("구매 서적:", books)
     input_price = st.text_input("금액")
     
@@ -95,11 +112,10 @@ with tab2:
                 bookid = select_book.split(",")[0]
                 dt = time.strftime('%Y-%m-%d', time.localtime())
                 
-                # 주문번호 생성
+                # 주문번호 생성 (최대값 + 1)
                 max_order_res = query("select max(orderid) from Orders")
                 current_max = max_order_res[0][0]
                 
-                # 데이터가 없을 때(None) 처리
                 if current_max is None:
                     new_orderid = 1
                 else:
@@ -117,3 +133,4 @@ with tab2:
                 st.error(f"입력 중 오류가 발생했습니다: {e}")
         else:
             st.warning("책과 금액을 모두 입력해주세요.")
+    
