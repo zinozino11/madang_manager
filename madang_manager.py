@@ -98,7 +98,7 @@ with tab1:
             if result_df is not None and not result_df.empty:
                 st.dataframe(result_df)
                 total = result_df['saleprice'].sum()
-                st.success(f"💰 총 구매액: {total:,.0f}원")
+                
             else:
                 st.warning(f"'{search_name}' 고객의 구매 내역이 없습니다.")
         else:
@@ -139,9 +139,10 @@ with tab2:
             # 실행
             run_query(insert_sql, (new_orderid, input_custid, bookid, input_price, today))
             
-            st.success(f"✅ 입력되었습니다! (주문번호: {new_orderid})")
+            st.success(f" 입력되었습니다! (주문번호: {new_orderid})")
             time.sleep(1)
             st.rerun() # 화면 새로고침
             
         else:
             st.error("책을 선택해주세요.")
+
