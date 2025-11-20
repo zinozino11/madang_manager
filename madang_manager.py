@@ -1,5 +1,4 @@
 import streamlit as st 
-import pymysql
 import pandas as pd
 import time
 dbConn = pymysql.connect(user='root', passwd='1234', host='localhost', db='madang', charset='utf8')
@@ -43,5 +42,6 @@ if len(name) > 0:
               if tab2.button('거래 입력'):
                      dbConn.commit()
                      tab2.write('거래가 입력되었습니다.')
+
 
 
