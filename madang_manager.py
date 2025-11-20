@@ -79,4 +79,25 @@ with tab2:
     input_price = st.text_input("금액")
     
     if st.button('거래 입력'):
-        if select_book
+        if select_book and input_price:
+            try:
+                bookid = select_book.split(",")[0]
+                dt = time.strftime('%Y-%m-%d', time.localtime())
+                
+                # 주문번호 생성 (최대값 + 1)
+                max_order_res = query("select max(orderid) from Orders")
+                current_max = max_order_res[0][0]
+                new_orderid = 1 if current_max is None else current_max + 1
+                
+                # 데이터 삽입
+                insert_sql = f"""
+                    INSERT INTO Orders (orderid, custid, bookid, saleprice, orderdate) 
+                    VALUES ({new_orderid}, {input_custid}, {bookid}, {input_price}, '{dt}')
+                """
+                cursor.execute(insert_sql)
+                st.success(f'거래가 입력되었습니다. (주문번호: {new_orderid})')
+                
+            except Exception as e:
+                st.error(f"입력 중 오류가 발생했습니다: {e}")
+        else:
+            st.warning("책과 금액을 모두 입력해주세요.")
