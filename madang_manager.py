@@ -123,3 +123,4 @@ with tab2:
                 st.error(f"입력 에러: {e}")
         else:
             st.write("책과 금액을 입력하세요.")
+
