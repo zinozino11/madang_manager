@@ -73,7 +73,7 @@ tab1, tab2 = st.tabs(["고객조회", "거래 입력"])
 # [탭 1] 고객 조회
 with tab1:
     st.write("### 고객별 구매 내역 조회")
-    name_input = st.text_input("고객명 검색", placeholder="예: 최진호")
+    name_input = st.text_input("고객명 검색")
     
     if name_input:
         sql = f"""
@@ -87,11 +87,10 @@ with tab1:
             if not result_df.empty:
                 st.dataframe(result_df)
             else:
-                st.warning(f"'{name_input}' 고객의 구매 내역이 없습니다.")
                 # 고객 정보만이라도 있는지 확인해서 보여주면 더 친절함
                 check_cust = query(f"SELECT * FROM Customer WHERE name = '{name_input}'", return_df=True)
                 if not check_cust.empty:
-                    st.info("고객 정보는 존재합니다:")
+                    
                     st.dataframe(check_cust)
 
         except Exception as e:
@@ -127,10 +126,11 @@ with tab2:
                     VALUES ({new_orderid}, {input_custid}, {bookid}, {input_price}, '{dt}')
                 """
                 cursor.execute(insert_sql)
-                st.success(f'거래가 입력되었습니다. (주문번호: {new_orderid})')
+               
                 
             except Exception as e:
                 st.error(f"입력 중 오류가 발생했습니다: {e}")
         else:
             st.warning("책과 금액을 모두 입력해주세요.")
     
+
