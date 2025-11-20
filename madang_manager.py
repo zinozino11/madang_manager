@@ -4,133 +4,138 @@ import time
 import duckdb
 import os
 
-# --- 데이터베이스 연결 및 초기화 함수 ---
+# --- 1. 데이터베이스 연결 및 초기화 ---
 def get_connection():
-    # 1. DB 파일 연결
     conn = duckdb.connect(database='madang.db', read_only=False)
     
-    # 2. 테이블 초기화 (CSV 파일 기반)
     try:
-        # Book 테이블 생성
+        # Book 테이블 생성 및 데이터 로드
         if os.path.exists('Book_madang.csv'):
             conn.execute("CREATE OR REPLACE TABLE Book AS SELECT * FROM 'Book_madang.csv'")
         
-        # Customer 테이블 생성
+        # Customer 테이블 생성 및 데이터 로드
         if os.path.exists('Customer_madang.csv'):
             conn.execute("CREATE OR REPLACE TABLE Customer AS SELECT * FROM 'Customer_madang.csv'")
             
-            # [추가된 코드] 요청하신 '최진호' 고객 데이터 추가
-            # 테이블이 초기화될 때마다 이 데이터가 삽입됩니다.
-            # 혹시 CSV에 이미 6번이 있다면 중복될 수 있으니 체크 후 삽입 (안전장치)
+            # [자동 추가] 최진호 고객 데이터 (없을 경우에만 추가)
             conn.execute("""
                 INSERT INTO Customer (custid, name, address, phone)
                 SELECT 6, '최진호', '경기도', '010-7777-7777'
                 WHERE NOT EXISTS (SELECT 1 FROM Customer WHERE custid = 6)
             """)
             
-        # Orders 테이블 생성
+        # Orders 테이블 생성 및 데이터 로드
         if os.path.exists('Orders_madang.csv'):
             conn.execute("CREATE OR REPLACE TABLE Orders AS SELECT * FROM 'Orders_madang.csv'")
             
     except Exception as e:
-        st.error(f"테이블 생성 중 오류가 발생했습니다: {e}")
+        st.error(f"DB 초기화 중 오류: {e}")
             
     return conn
 
-# DB 연결 객체 생성
+# 연결 객체 생성
 dbConn = get_connection()
 cursor = dbConn.cursor()
 
-# --- 쿼리 실행 함수 ---
-def query(sql, return_df=False):
-    cursor.execute(sql)
+# --- 2. 쿼리 실행 함수 ---
+def query(sql, params=None, return_df=False):
+    if params:
+        cursor.execute(sql, params)
+    else:
+        cursor.execute(sql)
+        
     if return_df:
         return cursor.df()
     else:
         return cursor.fetchall()
 
-# --- 메인 로직 ---
+# --- 3. 메인 로직 ---
+st.title("마당서점 관리자")
 
+# 책 목록 가져오기 (콤보박스용)
 books = []
 try:
-    # 테이블 존재 여부 확인 (안전장치)
-    cursor.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = 'Book'")
-    if cursor.fetchall()[0][0] == 0:
-        st.error("데이터베이스 테이블이 없습니다. CSV 파일(Book_madang.csv 등)을 확인해주세요.")
+    # 테이블 존재 확인
+    check_table = cursor.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = 'Book'").fetchall()
+    if check_table[0][0] == 0:
+        st.error("Book 테이블이 없습니다. CSV 파일을 확인하세요.")
         st.stop()
 
-    # 책 목록 조회 (콤보박스용)
-    book_result = query("select concat(bookid, ',', bookname) from Book")
+    book_result = query("SELECT concat(bookid, ', ', bookname) FROM Book")
     for res in book_result:
         books.append(res[0])
-        
 except Exception as e:
-    st.error(f"데이터 조회 중 오류 발생: {e}")
+    st.error(f"초기 데이터 로드 실패: {e}")
     st.stop()
 
 tab1, tab2 = st.tabs(["고객조회", "거래 입력"])
 
-# [탭 1] 고객 조회
+# --- [탭 1] 고객 조회 ---
 with tab1:
-    st.write("### 고객별 구매 내역 조회")
-    name_input = st.text_input("고객명 검색")
+    st.header("고객별 구매 내역")
+    name_input = st.text_input("고객명 검색", placeholder="예: 최진호")
     
     if name_input:
-        sql = f"""
+        sql = """
             SELECT c.custid, c.name, b.bookname, o.orderdate, o.saleprice 
             FROM Customer c, Book b, Orders o 
-            WHERE c.custid = o.custid AND o.bookid = b.bookid AND c.name = '{name_input}'
+            WHERE c.custid = o.custid AND o.bookid = b.bookid AND c.name = ?
         """
         try:
-            result_df = query(sql, return_df=True)
+            result_df = query(sql, params=(name_input,), return_df=True)
             
             if not result_df.empty:
                 st.dataframe(result_df)
+                # 총 구매액 계산
+                total_price = result_df['saleprice'].sum()
+                st.success(f"총 구매액: {total_price:,}원")
             else:
-                # 고객 정보만이라도 있는지 확인해서 보여주면 더 친절함
-                check_cust = query(f"SELECT * FROM Customer WHERE name = '{name_input}'", return_df=True)
-                if not check_cust.empty:
-                    
-                    st.dataframe(check_cust)
-
+                st.warning(f"'{name_input}' 고객의 구매 내역이 없습니다.")
         except Exception as e:
-            st.error(f"조회 중 오류가 발생했습니다: {e}")
+            st.error(f"조회 에러: {e}")
 
-# [탭 2] 거래 입력
+# --- [탭 2] 거래 입력 (수정된 부분) ---
 with tab2:
-    st.write("### 신규 거래 입력")
+    st.header("신규 거래 입력")
     
-    # 최진호(6번)을 기본값으로 설정하기 위해 value=6으로 변경
-    input_custid = st.number_input("고객번호(custid)", value=6, step=1)
-    select_book = st.selectbox("구매 서적:", books)
-    input_price = st.text_input("금액")
+    # 1. 입력 폼 개선
+    col1, col2 = st.columns(2)
+    with col1:
+        # 최진호(6번) 기본값
+        input_custid = st.number_input("고객번호(custid)", value=6, step=1, min_value=1)
+    with col2:
+        # 금액을 숫자 입력칸으로 변경 (중요!)
+        input_price = st.number_input("판매 금액", min_value=0, step=1000, value=10000)
+
+    select_book = st.selectbox("구매 서적 선택", books)
     
-    if st.button('거래 입력'):
-        if select_book and input_price:
+    if st.button('거래 입력', type="primary"):
+        if select_book:
             try:
-                bookid = select_book.split(",")[0]
+                # 데이터 준비
+                bookid = int(select_book.split(",")[0]) # 콤마 앞의 숫자만 추출
                 dt = time.strftime('%Y-%m-%d', time.localtime())
                 
-                # 주문번호 생성 (최대값 + 1)
-                max_order_res = query("select max(orderid) from Orders")
-                current_max = max_order_res[0][0]
+                # 주문번호 생성 logic
+                max_res = query("SELECT max(orderid) FROM Orders")
+                current_max = max_res[0][0]
+                new_orderid = 1 if current_max is None else current_max + 1
                 
-                if current_max is None:
-                    new_orderid = 1
-                else:
-                    new_orderid = current_max + 1
-                
-                # 데이터 삽입
-                insert_sql = f"""
+                # INSERT 실행 (파라미터 바인딩 사용으로 안전성 확보)
+                insert_sql = """
                     INSERT INTO Orders (orderid, custid, bookid, saleprice, orderdate) 
-                    VALUES ({new_orderid}, {input_custid}, {bookid}, {input_price}, '{dt}')
+                    VALUES (?, ?, ?, ?, ?)
                 """
-                cursor.execute(insert_sql)
-               
+                cursor.execute(insert_sql, (new_orderid, input_custid, bookid, input_price, dt))
+                
+                # 커밋 (DuckDB는 자동 커밋되지만 확실하게 처리)
+                # dbConn.commit() 
+                
+                st.success(f"✅ 거래 입력 완료! (주문번호: {new_orderid})")
+                time.sleep(1) # 메시지를 보여줄 시간 확보
+                st.rerun() # 화면 새로고침 (입력 결과 즉시 반영을 위해)
                 
             except Exception as e:
-                st.error(f"입력 중 오류가 발생했습니다: {e}")
+                st.error(f"❌ 입력 실패: {e}")
         else:
-            st.warning("책과 금액을 모두 입력해주세요.")
-    
-
+            st.warning("책을 선택해주세요.")
