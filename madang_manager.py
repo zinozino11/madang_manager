@@ -1,6 +1,7 @@
 import streamlit as st 
 import pandas as pd
 import time
+import duckdb
 # 1. 연결: user, passwd, host 등은 다 지우고 DB 파일명만 씁니다.
 # read_only=False로 해야 insert/update가 가능합니다.
 dbConn = duckdb.connect(database='madang.db', read_only=False)
@@ -47,6 +48,7 @@ if len(name) > 0:
               if tab2.button('거래 입력'):
                      dbConn.commit()
                      tab2.write('거래가 입력되었습니다.')
+
 
 
 
